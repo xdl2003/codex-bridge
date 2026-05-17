@@ -8,6 +8,8 @@ const state = {
   activeSkillIndex: 0,
   sessions: [],
   session: null,
+  jobs: [],
+  promptTarget: "message",
   busy: false,
   pickerOpen: false
 };
@@ -25,6 +27,15 @@ const els = {
   skillFilter: document.getElementById("skill-filter"),
   skills: document.getElementById("skills"),
   skillsCount: document.getElementById("skills-count"),
+  jobsRefresh: document.getElementById("jobs-refresh"),
+  taskForm: document.getElementById("task-form"),
+  taskName: document.getElementById("task-name"),
+  taskPrompt: document.getElementById("task-prompt"),
+  taskInterval: document.getElementById("task-interval"),
+  taskNext: document.getElementById("task-next"),
+  taskRepeat: document.getElementById("task-repeat"),
+  createTask: document.getElementById("create-task"),
+  tasks: document.getElementById("tasks"),
   sessions: document.getElementById("sessions"),
   newSession: document.getElementById("new-session"),
   sessionTitle: document.getElementById("session-title"),
@@ -45,13 +56,24 @@ function init() {
   els.pickFolder.addEventListener("click", browseWorkspace);
   els.closePicker.addEventListener("click", closeWorkspacePicker);
   els.skillFilter.addEventListener("input", renderSkills);
+  els.jobsRefresh.addEventListener("click", loadJobs);
+  els.taskForm.addEventListener("submit", createTask);
   els.newSession.addEventListener("click", newSession);
   els.composer.addEventListener("submit", sendMessage);
+  els.message.addEventListener("focus", () => {
+    state.promptTarget = "message";
+  });
   els.message.addEventListener("input", updateSkillSuggest);
   els.message.addEventListener("keydown", handleComposerKeydown);
   els.message.addEventListener("blur", () => window.setTimeout(closeSkillSuggest, 120));
+  els.taskPrompt.addEventListener("focus", () => {
+    state.promptTarget = "taskPrompt";
+    closeSkillSuggest();
+  });
+  setDefaultTaskRunAt();
   renderMessages([]);
   bootstrap();
+  window.setInterval(loadJobs, 15000);
 }
 
 async function scanSessions() {
@@ -64,6 +86,7 @@ async function scanSessions() {
     localStorage.setItem("codexBridge.workspace", workspace);
     state.sessions = data.sessions || [];
     renderSessions();
+    await loadJobs();
     setStatus(`${state.sessions.length} sessions`);
   } catch (error) {
     setStatus(error.message);
@@ -78,6 +101,7 @@ async function bootstrap() {
     }
     await loadWorkspaces();
     await loadSkills();
+    await loadJobs();
     if (els.workspace.value.trim()) await scanSessions();
   } catch (error) {
     setStatus(error.message);
@@ -176,6 +200,18 @@ async function loadSkills() {
   renderSkills();
 }
 
+async function loadJobs() {
+  try {
+    const workspace = els.workspace.value.trim();
+    const query = workspace ? `?workspace=${encodeURIComponent(workspace)}` : "";
+    const data = await request(`/api/jobs${query}`);
+    state.jobs = data.jobs || [];
+    renderJobs();
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
 async function selectSession(sessionId) {
   setStatus("Loading history");
   const workspace = els.workspace.value.trim();
@@ -184,7 +220,84 @@ async function selectSession(sessionId) {
   renderSessions();
   renderSelectedSession();
   renderMessages(state.session.messages || [], true);
+  renderJobs();
   setStatus("Ready");
+}
+
+async function createTask(event) {
+  event.preventDefault();
+  if (!state.session) {
+    setStatus("Select a session first");
+    return;
+  }
+
+  const prompt = els.taskPrompt.value.trim();
+  if (!prompt) {
+    setStatus("Prompt is required");
+    return;
+  }
+
+  try {
+    const data = await request("/api/jobs", {
+      method: "POST",
+      body: {
+        workspace: els.workspace.value.trim(),
+        sessionId: state.session.id,
+        name: els.taskName.value.trim(),
+        prompt,
+        skills: skillIdsFromMessage(prompt),
+        intervalMinutes: Number(els.taskInterval.value || 60),
+        nextRunAt: datetimeLocalToIso(els.taskNext.value),
+        repeat: els.taskRepeat.checked,
+        enabled: true
+      }
+    });
+    state.jobs = [data.job, ...state.jobs.filter((job) => job.id !== data.job.id)];
+    els.taskName.value = "";
+    els.taskPrompt.value = "";
+    setDefaultTaskRunAt();
+    renderJobs();
+    setStatus("Task scheduled");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function runTask(jobId) {
+  try {
+    setStatus("Running task");
+    const data = await request(`/api/jobs/${encodeURIComponent(jobId)}/run`, { method: "POST" });
+    replaceJob(data.job);
+    setStatus(data.result && data.result.ok ? "Task finished" : "Task exited with an error");
+  } catch (error) {
+    setStatus(error.message);
+    await loadJobs();
+  }
+}
+
+async function toggleTask(job) {
+  try {
+    const data = await request(`/api/jobs/${encodeURIComponent(job.id)}`, {
+      method: "PATCH",
+      body: { enabled: !job.enabled }
+    });
+    replaceJob(data.job);
+    setStatus(data.job.enabled ? "Task resumed" : "Task paused");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function deleteTask(jobId) {
+  if (!window.confirm("Delete this task?")) return;
+  try {
+    await request(`/api/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" });
+    state.jobs = state.jobs.filter((job) => job.id !== jobId);
+    renderJobs();
+    setStatus("Task deleted");
+  } catch (error) {
+    setStatus(error.message);
+  }
 }
 
 async function sendMessage(event) {
@@ -363,6 +476,78 @@ function updateSkillsCount(visibleCount) {
   els.skillsCount.textContent = visibleCount === total ? `${total} available` : `${visibleCount}/${total}`;
 }
 
+function renderJobs() {
+  els.tasks.innerHTML = "";
+  els.createTask.disabled = state.busy || !state.session;
+
+  const jobs = state.jobs || [];
+  if (!jobs.length) {
+    const empty = document.createElement("li");
+    empty.className = "task-empty";
+    empty.textContent = "No scheduled tasks";
+    els.tasks.appendChild(empty);
+    return;
+  }
+
+  for (const job of jobs) {
+    const item = document.createElement("li");
+    const active = state.session && state.session.id === job.sessionId;
+    item.className = active ? "task-card active" : "task-card";
+
+    const head = document.createElement("div");
+    head.className = "task-head";
+
+    const title = document.createElement("span");
+    title.className = "task-name";
+    title.textContent = job.name;
+
+    const stateLabel = document.createElement("span");
+    stateLabel.className = job.running ? "task-state running" : job.enabled ? "task-state" : "task-state paused";
+    stateLabel.textContent = job.running ? "Running" : job.enabled ? "On" : "Paused";
+
+    head.append(title, stateLabel);
+
+    const meta = document.createElement("p");
+    meta.className = "task-meta";
+    const repeat = job.repeat ? `every ${job.intervalMinutes}m` : "once";
+    meta.textContent = `${repeat} · next ${formatDate(job.nextRunAt)} · ${job.sessionId}`;
+
+    const prompt = document.createElement("p");
+    prompt.className = "task-prompt";
+    prompt.textContent = job.prompt;
+
+    const actions = document.createElement("div");
+    actions.className = "task-actions";
+
+    const run = document.createElement("button");
+    run.type = "button";
+    run.textContent = "Run";
+    run.disabled = job.running;
+    run.addEventListener("click", () => runTask(job.id));
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.textContent = job.enabled ? "Pause" : "Resume";
+    toggle.disabled = job.running;
+    toggle.addEventListener("click", () => toggleTask(job));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Delete";
+    remove.disabled = job.running;
+    remove.addEventListener("click", () => deleteTask(job.id));
+
+    actions.append(run, toggle, remove);
+    item.append(head, meta, prompt, actions);
+    els.tasks.appendChild(item);
+  }
+}
+
+function replaceJob(job) {
+  state.jobs = [job].concat(state.jobs.filter((candidate) => candidate.id !== job.id));
+  renderJobs();
+}
+
 function skillIdsFromMessage(message) {
   const known = new Set(state.skills.map((skill) => skill.id));
   const ids = [];
@@ -458,14 +643,15 @@ function closeSkillSuggest() {
 }
 
 function insertSkillMention(skillId) {
-  const prefix = els.message.value && !/\s$/.test(els.message.value) ? " " : "";
+  const target = activePromptElement();
+  const prefix = target.value && !/\s$/.test(target.value) ? " " : "";
   const insertion = `${prefix}$${skillId} `;
-  const start = els.message.selectionStart || els.message.value.length;
-  const end = els.message.selectionEnd || start;
-  els.message.value = `${els.message.value.slice(0, start)}${insertion}${els.message.value.slice(end)}`;
+  const start = target.selectionStart || target.value.length;
+  const end = target.selectionEnd || start;
+  target.value = `${target.value.slice(0, start)}${insertion}${target.value.slice(end)}`;
   const cursor = start + insertion.length;
-  els.message.focus();
-  els.message.setSelectionRange(cursor, cursor);
+  target.focus();
+  target.setSelectionRange(cursor, cursor);
   closeSkillSuggest();
 }
 
@@ -494,6 +680,10 @@ function currentSkillMention() {
     end: cursor,
     query: match[2]
   };
+}
+
+function activePromptElement() {
+  return state.promptTarget === "taskPrompt" ? els.taskPrompt : els.message;
 }
 
 function renderSelectedSession() {
@@ -740,6 +930,7 @@ function setBusy(value, label) {
   els.scan.disabled = value;
   els.refresh.disabled = value;
   els.newSession.disabled = value;
+  els.createTask.disabled = value || !state.session;
   if (label) setStatus(label);
 }
 
@@ -752,6 +943,32 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function setDefaultTaskRunAt() {
+  const date = new Date(Date.now() + 60 * 60 * 1000);
+  els.taskNext.value = toDatetimeLocal(date);
+}
+
+function datetimeLocalToIso(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function toDatetimeLocal(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes())
+  ].join("");
 }
 
 function basename(inputPath) {
