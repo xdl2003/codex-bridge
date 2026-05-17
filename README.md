@@ -12,6 +12,7 @@ It is designed for people who use Codex across many local projects and want a li
 - resume a session through an API
 - chat with the Codex agent from a browser
 - reference local Codex skills with `$skill-name`
+- schedule prompts that are automatically sent to a resumed Codex session
 
 Codex Bridge is not an official OpenAI project. It wraps the local `codex` command and reads the local Codex session files on your machine.
 
@@ -35,6 +36,9 @@ Codex Bridge is not an official OpenAI project. It wraps the local `codex` comma
 - **Skill mention support**  
   Type `$` in the message box to insert a skill mention, or click a skill in the sidebar. The backend extracts `$skill-name` mentions and passes them to Codex as selected skills.
 
+- **Scheduled Codex tasks**  
+  Create recurring or one-shot tasks for a workspace session. When a task is due, the local server sends the configured prompt to Codex automatically.
+
 - **No runtime npm dependencies**  
   Uses only Node.js built-in modules.
 
@@ -51,6 +55,10 @@ Codex Bridge uses two different data paths:
    - Calls the local Codex CLI.
    - Uses `codex exec resume --json <session-id> -` for resumed conversations.
    - Uses `codex exec --json -C <workspace> -` for new conversations.
+
+3. **Scheduled tasks**
+   - Stores task definitions in `~/.codex-bridge/jobs.json` by default.
+   - The running server process checks for due tasks and sends each configured prompt through the same resumed-session execution path.
 
 This means Codex Bridge does not reimplement the agent. It provides a local bridge around Codex CLI behavior.
 
@@ -135,6 +143,27 @@ node ./bin/codex-bridge.js chat <session-id> "Plot this data" \
   --skill plot-from-data
 ```
 
+List scheduled tasks:
+
+```bash
+node ./bin/codex-bridge.js jobs --workspace /path/to/project
+```
+
+Create a recurring scheduled task:
+
+```bash
+node ./bin/codex-bridge.js schedule <session-id> "Review the current git status" \
+  --workspace /path/to/project \
+  --every 60
+```
+
+Run or delete a scheduled task:
+
+```bash
+node ./bin/codex-bridge.js run-job <job-id>
+node ./bin/codex-bridge.js delete-job <job-id>
+```
+
 Open the selected session in the native Codex TUI:
 
 ```bash
@@ -164,6 +193,7 @@ The web UI includes:
 - Markdown rendering for message history
 - dedicated scroll area for the conversation panel
 - skill search and `$skill-name` insertion
+- task creation, pause/resume, immediate run, and deletion
 - chat composer that sends messages to the local Codex CLI
 
 ### Browser Folder Selection Limitation
@@ -207,6 +237,21 @@ $plot-from-data draw a grouped bar chart from this CSV
 
 When a message is sent, Codex Bridge extracts known `$skill-name` mentions and prepends a small instruction to the prompt so the resumed Codex process uses those skills.
 
+## Scheduled Tasks
+
+Scheduled tasks are local to the machine running Codex Bridge. A task contains:
+
+- workspace path
+- session id
+- prompt
+- optional skill mentions
+- next run time
+- repeat interval, or one-shot mode
+
+The scheduler runs only while the Codex Bridge server process is running. Keep `npm run server` or `codex-bridge server` active if you want tasks to execute automatically.
+
+Task prompts can use the same `$skill-name` mentions as normal chat messages. The web UI extracts the known skill ids before creating the task.
+
 ## HTTP API
 
 Health check:
@@ -225,6 +270,40 @@ List local skills:
 
 ```http
 GET /api/skills
+```
+
+List scheduled tasks:
+
+```http
+GET /api/jobs?workspace=/path/to/project
+```
+
+Create a scheduled task:
+
+```http
+POST /api/jobs
+```
+
+Example request body:
+
+```json
+{
+  "workspace": "/path/to/project",
+  "sessionId": "00000000-0000-0000-0000-000000000000",
+  "prompt": "$plot-from-data summarize the latest run",
+  "skills": ["plot-from-data"],
+  "intervalMinutes": 60,
+  "nextRunAt": "2026-05-18T12:00:00.000Z",
+  "repeat": true
+}
+```
+
+Update, run, or delete a scheduled task:
+
+```http
+PATCH /api/jobs/:id
+POST /api/jobs/:id/run
+DELETE /api/jobs/:id
 ```
 
 List sessions for a workspace:
@@ -281,6 +360,7 @@ src/
   cli.js                CLI commands and interactive mode
   codex-runner.js       Codex CLI process wrapper
   folder-picker.js      Optional folder picker helpers
+  job-store.js          Scheduled task persistence and runner
   session-store.js      Codex JSONL session parsing
   skill-store.js        Local skill discovery and prompt injection
 test/
@@ -315,6 +395,7 @@ node --check public/app.js
 node --check src/api-server.js
 node --check src/cli.js
 node --check src/codex-runner.js
+node --check src/job-store.js
 node --check src/session-store.js
 node --check src/skill-store.js
 ```

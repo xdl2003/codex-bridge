@@ -11,6 +11,7 @@ const {
 } = require("./session-store");
 const { openCodexTui, runCodexPrompt, runNewCodexPrompt } = require("./codex-runner");
 const { startServer } = require("./api-server");
+const { createJob, deleteJob, listJobs, runJob } = require("./job-store");
 
 async function main(argv) {
   const parsed = parseArgs(argv);
@@ -42,6 +43,26 @@ async function main(argv) {
 
   if (command === "history") {
     commandHistory(parsed);
+    return;
+  }
+
+  if (command === "jobs") {
+    commandJobs(parsed);
+    return;
+  }
+
+  if (command === "schedule") {
+    await commandSchedule(parsed);
+    return;
+  }
+
+  if (command === "run-job") {
+    await commandRunJob(parsed);
+    return;
+  }
+
+  if (command === "delete-job") {
+    commandDeleteJob(parsed);
     return;
   }
 
@@ -90,6 +111,73 @@ function commandHistory(parsed) {
   printJsonOrText({ session }, parsed.options.json, () => {
     printSessionHeader(session);
     printHistory(session.messages);
+  });
+}
+
+function commandJobs(parsed) {
+  const workspace = parsed.options.workspace ? ensureDirectory(parsed.options.workspace) : undefined;
+  const jobs = listJobs({ workspace });
+  printJsonOrText({ jobs }, parsed.options.json, () => {
+    if (!jobs.length) {
+      console.log("No scheduled jobs.");
+      return;
+    }
+    for (const job of jobs) {
+      const state = job.running ? "running" : job.enabled ? "enabled" : "paused";
+      const repeat = job.repeat ? `every ${job.intervalMinutes}m` : "once";
+      console.log(`${job.id}  ${state}  ${repeat}  next ${job.nextRunAt || "-"}`);
+      console.log(`   ${job.name}`);
+      console.log(`   ${job.workspace}`);
+      console.log(`   session ${job.sessionId}`);
+    }
+  });
+}
+
+async function commandSchedule(parsed) {
+  const sessionId = parsed.args[1];
+  if (!sessionId) throw new Error("Usage: codex-bridge schedule <session-id> [prompt] --workspace DIR [--every MINUTES]");
+  const prompt = parsed.args.slice(2).join(" ") || (await readStdin());
+  if (!prompt.trim()) throw new Error("prompt is required.");
+
+  const job = createJob({
+    workspace: parsed.options.workspace || process.cwd(),
+    sessionId,
+    prompt,
+    name: parsed.options.name,
+    intervalMinutes: parsed.options.intervalMinutes || parsed.options.every,
+    nextRunAt: parsed.options.at,
+    repeat: !parsed.options.once,
+    skills: normalizeSkillOptions(parsed.options)
+  });
+
+  printJsonOrText({ job }, parsed.options.json, () => {
+    console.log(`Scheduled job: ${job.id}`);
+    console.log(`Next run: ${job.nextRunAt}`);
+  });
+}
+
+async function commandRunJob(parsed) {
+  const jobId = parsed.args[1];
+  if (!jobId) throw new Error("Usage: codex-bridge run-job <job-id>");
+  const result = await runJob(jobId, { runner: runCodexPrompt, force: true });
+
+  if (parsed.options.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    if (result.result.assistantText) console.log(result.result.assistantText);
+    if (!result.result.ok) {
+      console.error(result.result.error || result.result.stderr || `codex exited with ${result.result.code}`);
+      process.exitCode = result.result.code || 1;
+    }
+  }
+}
+
+function commandDeleteJob(parsed) {
+  const jobId = parsed.args[1];
+  if (!jobId) throw new Error("Usage: codex-bridge delete-job <job-id>");
+  deleteJob(jobId);
+  printJsonOrText({ ok: true }, parsed.options.json, () => {
+    console.log(`Deleted job: ${jobId}`);
   });
 }
 
@@ -310,7 +398,7 @@ function parseArgs(argv) {
 
     const [rawKey, inlineValue] = arg.replace(/^--?/, "").split("=", 2);
     const key = aliases(rawKey);
-    if (["json", "help"].includes(key)) {
+    if (["json", "help", "once"].includes(key)) {
       options[key] = true;
       continue;
     }
@@ -342,6 +430,8 @@ function aliases(key) {
       return "help";
     case "codex-bin":
       return "codexBin";
+    case "every":
+      return "intervalMinutes";
     default:
       return key;
   }
@@ -369,6 +459,10 @@ Usage:
   codex-bridge history <session-id> [--workspace DIR] [--json]
   codex-bridge chat <session-id> "message" [--workspace DIR] [--skill NAME] [--json]
   codex-bridge new "message" --workspace DIR [--skill NAME] [--json]
+  codex-bridge jobs [--workspace DIR] [--json]
+  codex-bridge schedule <session-id> "prompt" --workspace DIR [--every MINUTES] [--at ISO] [--skill NAME]
+  codex-bridge run-job <job-id> [--json]
+  codex-bridge delete-job <job-id> [--json]
   codex-bridge tui <session-id> [--workspace DIR]
 
 Interactive commands:

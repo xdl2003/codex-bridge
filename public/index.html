@@ -43,6 +43,33 @@
           <ol id="skills" class="skill-list"></ol>
         </section>
 
+        <section class="tasks-panel">
+          <div class="section-head">
+            <h2>Tasks</h2>
+            <button id="jobs-refresh" class="icon-button" title="Refresh tasks" aria-label="Refresh tasks">↻</button>
+          </div>
+          <form id="task-form" class="task-form">
+            <input id="task-name" autocomplete="off" spellcheck="false" placeholder="Name">
+            <textarea id="task-prompt" rows="3" placeholder="Prompt"></textarea>
+            <div class="task-grid">
+              <label>
+                <span>Every min</span>
+                <input id="task-interval" type="number" min="1" step="1" value="60">
+              </label>
+              <label>
+                <span>First run</span>
+                <input id="task-next" type="datetime-local">
+              </label>
+            </div>
+            <label class="check-row">
+              <input id="task-repeat" type="checkbox" checked>
+              <span>Repeat</span>
+            </label>
+            <button id="create-task" type="submit">Schedule</button>
+          </form>
+          <ol id="tasks" class="task-list"></ol>
+        </section>
+
         <section class="sessions-panel">
           <div class="section-head">
             <h2>Sessions</h2>

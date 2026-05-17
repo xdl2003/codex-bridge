@@ -103,7 +103,8 @@ textarea:focus {
 .brand h1,
 .chat-header h2,
 .sessions-panel h2,
-.skills-panel h2 {
+.skills-panel h2,
+.tasks-panel h2 {
   margin: 0;
   font-size: 18px;
   line-height: 1.25;
@@ -212,7 +213,7 @@ textarea:focus {
 .skill-list {
   display: grid;
   align-content: start;
-  max-height: 220px;
+  max-height: 160px;
   min-height: 0;
   gap: 6px;
   margin: 0;
@@ -259,6 +260,147 @@ textarea:focus {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.tasks-panel {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.task-form {
+  display: grid;
+  gap: 8px;
+}
+
+.task-form textarea {
+  min-height: 66px;
+  max-height: 130px;
+  resize: vertical;
+}
+
+.task-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+  gap: 8px;
+}
+
+.task-grid label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.task-grid input {
+  min-width: 0;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check-row input {
+  width: auto;
+}
+
+#create-task {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 650;
+}
+
+.task-list {
+  display: grid;
+  align-content: start;
+  max-height: 220px;
+  min-height: 0;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.task-card {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 9px;
+}
+
+.task-card.active {
+  border-color: rgba(20, 107, 86, 0.32);
+  background: #f4faf8;
+}
+
+.task-head,
+.task-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-name {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.task-state {
+  flex: 0 0 auto;
+  border: 1px solid rgba(20, 107, 86, 0.22);
+  border-radius: 6px;
+  color: var(--accent-strong);
+  font-size: 11px;
+  padding: 2px 7px;
+}
+
+.task-state.paused {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.task-state.running {
+  border-color: rgba(161, 92, 9, 0.28);
+  color: var(--warning);
+}
+
+.task-meta,
+.task-prompt,
+.task-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.task-prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--text);
+}
+
+.task-actions button {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 #scan,

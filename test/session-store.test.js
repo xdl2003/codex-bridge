@@ -13,6 +13,13 @@ const {
 } = require("../src/session-store");
 const { assistantTextFromEvent } = require("../src/codex-runner");
 const { buildSkillPrompt, listSkills } = require("../src/skill-store");
+const {
+  createJob,
+  deleteJob,
+  listJobs,
+  runDueJobs,
+  updateJob
+} = require("../src/job-store");
 
 test("parses Codex JSONL session metadata and user-facing messages", () => {
   const { filePath, workspace } = makeSessionFixture();
@@ -98,6 +105,72 @@ test("lists local and plugin skills and builds a skill prompt", () => {
   assert.deepEqual(skills.map((skill) => skill.id), ["plot-from-data", "figma:figma-use", "github:github"]);
   assert.equal(skills[1].source, "plugin");
   assert.match(buildSkillPrompt("hello", ["plot-from-data"]), /\$plot-from-data/);
+});
+
+test("creates, updates, and deletes scheduled jobs", () => {
+  const { home, workspace } = makeSessionFixture();
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "codex-bridge-jobs-")), "jobs.json");
+
+  const job = createJob(
+    {
+      workspace,
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      prompt: "Summarize status",
+      skills: ["plot-from-data"],
+      intervalMinutes: 15,
+      nextRunAt: "2026-05-18T01:00:00.000Z"
+    },
+    { file, codexHome: home }
+  );
+
+  assert.equal(job.prompt, "Summarize status");
+  assert.equal(job.intervalMinutes, 15);
+  assert.deepEqual(job.skills, ["plot-from-data"]);
+  assert.equal(listJobs({ file }).length, 1);
+
+  const updated = updateJob(job.id, { enabled: false, intervalMinutes: 30 }, { file, codexHome: home });
+  assert.equal(updated.enabled, false);
+  assert.equal(updated.intervalMinutes, 30);
+
+  deleteJob(job.id, { file });
+  assert.equal(listJobs({ file }).length, 0);
+});
+
+test("runs due scheduled jobs with the configured prompt", async () => {
+  const { home, workspace } = makeSessionFixture();
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "codex-bridge-jobs-")), "jobs.json");
+  const calls = [];
+
+  const job = createJob(
+    {
+      workspace,
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      prompt: "Run the scheduled check",
+      intervalMinutes: 10,
+      nextRunAt: "2026-05-18T00:00:00.000Z"
+    },
+    { file, codexHome: home }
+  );
+
+  const results = await runDueJobs({
+    file,
+    now: "2026-05-18T00:00:01.000Z",
+    runner: async (input) => {
+      calls.push(input);
+      return { code: 0, signal: null, assistantText: "ok", stderr: "" };
+    }
+  });
+
+  assert.equal(results.length, 1);
+  assert.equal(calls[0].sessionId, job.sessionId);
+  assert.equal(calls[0].workspace, workspace);
+  assert.equal(calls[0].message, "Run the scheduled check");
+
+  const [updated] = listJobs({ file });
+  assert.equal(updated.runCount, 1);
+  assert.equal(updated.lastResult.ok, true);
+  assert.equal(updated.lastResult.assistantText, "ok");
+  assert.ok(new Date(updated.nextRunAt) > new Date("2026-05-18T00:00:01.000Z"));
 });
 
 function makeSessionFixture(options = {}) {

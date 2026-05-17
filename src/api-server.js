@@ -14,6 +14,14 @@ const {
 const { pickFolder } = require("./folder-picker");
 const { runCodexPrompt, runNewCodexPrompt } = require("./codex-runner");
 const { listSkills } = require("./skill-store");
+const {
+  createJob,
+  deleteJob,
+  listJobs,
+  runDueJobs,
+  runJob,
+  updateJob
+} = require("./job-store");
 
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
 
@@ -21,15 +29,22 @@ function startServer(options = {}) {
   const host = options.host || "127.0.0.1";
   const port = Number(options.port || 3977);
   const defaultWorkspace = options.workspace ? normalizePath(options.workspace) : null;
+  const scheduler = options.scheduler === false ? null : startScheduler(options);
 
   const server = http.createServer((req, res) => {
     route(req, res, { defaultWorkspace }).catch((error) => {
       sendJson(res, 500, { error: error.message || String(error) });
     });
   });
+  server.once("close", () => {
+    if (scheduler) scheduler.stop();
+  });
 
   return new Promise((resolve, reject) => {
-    server.once("error", reject);
+    server.once("error", (error) => {
+      if (scheduler) scheduler.stop();
+      reject(error);
+    });
     server.listen(port, host, () => {
       const address = server.address();
       resolve({
@@ -63,6 +78,41 @@ async function route(req, res, context) {
 
   if (pathname === "/api/skills" && req.method === "GET") {
     sendJson(res, 200, { skills: listSkills() });
+    return;
+  }
+
+  if (pathname === "/api/jobs" && req.method === "GET") {
+    const workspace = requestUrl.searchParams.get("workspace") || undefined;
+    sendJson(res, 200, { jobs: listJobs({ workspace }) });
+    return;
+  }
+
+  if (pathname === "/api/jobs" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const workspace = body.workspace || context.defaultWorkspace || process.cwd();
+    const job = createJob({ ...body, workspace });
+    sendJson(res, 201, { job });
+    return;
+  }
+
+  const jobMatch = pathname.match(/^\/api\/jobs\/([^/]+)$/);
+  if (jobMatch && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    const job = updateJob(jobMatch[1], body);
+    sendJson(res, 200, { job });
+    return;
+  }
+
+  if (jobMatch && req.method === "DELETE") {
+    deleteJob(jobMatch[1]);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  const runJobMatch = pathname.match(/^\/api\/jobs\/([^/]+)\/run$/);
+  if (runJobMatch && req.method === "POST") {
+    const result = await runJob(runJobMatch[1], { runner: runCodexPrompt, force: true });
+    sendJson(res, result.result.ok ? 200 : 502, result);
     return;
   }
 
@@ -228,8 +278,33 @@ function normalizeSkills(value) {
 
 function setBaseHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+function startScheduler(options = {}) {
+  const intervalMs = Math.max(1000, Number(options.schedulerIntervalMs || 30000) || 30000);
+  let stopped = false;
+  let timer = null;
+
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      await runDueJobs({ runner: runCodexPrompt });
+    } catch (error) {
+      console.error(`Scheduled task error: ${error.message || String(error)}`);
+    } finally {
+      if (!stopped) timer = setTimeout(tick, intervalMs);
+    }
+  };
+
+  timer = setTimeout(tick, 1000);
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    }
+  };
 }
 
 function sendJson(res, statusCode, value) {
