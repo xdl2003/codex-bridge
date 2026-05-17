@@ -34,21 +34,23 @@
           <button id="scan">Show Sessions</button>
         </section>
 
-        <section class="skills-panel">
+        <section class="sessions-panel">
           <div class="section-head">
-            <h2>Skills</h2>
-            <span id="skills-count" class="panel-count">0 available</span>
+            <h2>Sessions</h2>
+            <button id="new-session" title="Start new session" aria-label="Start new session">New</button>
           </div>
-          <input id="skill-filter" autocomplete="off" spellcheck="false" placeholder="Filter skills">
-          <ol id="skills" class="skill-list"></ol>
+          <ol id="sessions" class="session-list"></ol>
         </section>
 
         <section class="tasks-panel">
           <div class="section-head">
             <h2>Tasks</h2>
-            <button id="jobs-refresh" class="icon-button" title="Refresh tasks" aria-label="Refresh tasks">↻</button>
+            <div class="section-actions">
+              <button id="jobs-refresh" class="icon-button" title="Refresh tasks" aria-label="Refresh tasks">↻</button>
+              <button id="task-toggle" type="button">New Task</button>
+            </div>
           </div>
-          <form id="task-form" class="task-form">
+          <form id="task-form" class="task-form" hidden>
             <input id="task-name" autocomplete="off" spellcheck="false" placeholder="Name">
             <textarea id="task-prompt" rows="3" placeholder="Prompt"></textarea>
             <div class="task-grid">
@@ -70,12 +72,13 @@
           <ol id="tasks" class="task-list"></ol>
         </section>
 
-        <section class="sessions-panel">
+        <section class="skills-panel">
           <div class="section-head">
-            <h2>Sessions</h2>
-            <button id="new-session" title="Start new session" aria-label="Start new session">New</button>
+            <h2>Skills</h2>
+            <span id="skills-count" class="panel-count">0 available</span>
           </div>
-          <ol id="sessions" class="session-list"></ol>
+          <input id="skill-filter" autocomplete="off" spellcheck="false" placeholder="Filter skills">
+          <ol id="skills" class="skill-list"></ol>
         </section>
       </aside>
 
