@@ -9,6 +9,7 @@ const state = {
   sessions: [],
   session: null,
   jobs: [],
+  taskFormOpen: false,
   promptTarget: "message",
   busy: false,
   pickerOpen: false
@@ -28,6 +29,7 @@ const els = {
   skills: document.getElementById("skills"),
   skillsCount: document.getElementById("skills-count"),
   jobsRefresh: document.getElementById("jobs-refresh"),
+  taskToggle: document.getElementById("task-toggle"),
   taskForm: document.getElementById("task-form"),
   taskName: document.getElementById("task-name"),
   taskPrompt: document.getElementById("task-prompt"),
@@ -57,6 +59,7 @@ function init() {
   els.closePicker.addEventListener("click", closeWorkspacePicker);
   els.skillFilter.addEventListener("input", renderSkills);
   els.jobsRefresh.addEventListener("click", loadJobs);
+  els.taskToggle.addEventListener("click", toggleTaskForm);
   els.taskForm.addEventListener("submit", createTask);
   els.newSession.addEventListener("click", newSession);
   els.composer.addEventListener("submit", sendMessage);
@@ -71,6 +74,7 @@ function init() {
     closeSkillSuggest();
   });
   setDefaultTaskRunAt();
+  renderTaskForm();
   renderMessages([]);
   bootstrap();
   window.setInterval(loadJobs, 15000);
@@ -221,7 +225,20 @@ async function selectSession(sessionId) {
   renderSelectedSession();
   renderMessages(state.session.messages || [], true);
   renderJobs();
+  renderTaskForm();
   setStatus("Ready");
+}
+
+function toggleTaskForm() {
+  if (!state.session) {
+    setStatus("Select a session first");
+    return;
+  }
+
+  state.taskFormOpen = !state.taskFormOpen;
+  if (state.taskFormOpen && !els.taskNext.value) setDefaultTaskRunAt();
+  renderTaskForm();
+  if (state.taskFormOpen) requestAnimationFrame(() => els.taskPrompt.focus());
 }
 
 async function createTask(event) {
@@ -256,6 +273,8 @@ async function createTask(event) {
     els.taskName.value = "";
     els.taskPrompt.value = "";
     setDefaultTaskRunAt();
+    state.taskFormOpen = false;
+    renderTaskForm();
     renderJobs();
     setStatus("Task scheduled");
   } catch (error) {
@@ -546,6 +565,13 @@ function renderJobs() {
 function replaceJob(job) {
   state.jobs = [job].concat(state.jobs.filter((candidate) => candidate.id !== job.id));
   renderJobs();
+}
+
+function renderTaskForm() {
+  els.taskForm.hidden = !state.taskFormOpen;
+  els.taskToggle.textContent = state.taskFormOpen ? "Cancel" : "New Task";
+  els.taskToggle.disabled = state.busy || !state.session;
+  els.createTask.disabled = state.busy || !state.session;
 }
 
 function skillIdsFromMessage(message) {
@@ -930,6 +956,7 @@ function setBusy(value, label) {
   els.scan.disabled = value;
   els.refresh.disabled = value;
   els.newSession.disabled = value;
+  els.taskToggle.disabled = value || !state.session;
   els.createTask.disabled = value || !state.session;
   if (label) setStatus(label);
 }
