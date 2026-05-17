@@ -1,80 +1,324 @@
 # Codex Bridge
 
-Codex Bridge 是一个本地 CLI/API/网页壳，用来按工作目录查看并恢复 Codex CLI 会话。
+[中文文档](./README_CN.md)
 
-核心策略很简单：
+Codex Bridge is a local CLI, HTTP API, and optional web UI for browsing and resuming Codex CLI sessions by workspace.
 
-- 会话列表和历史消息直接解析本机 `~/.codex/sessions/**/*.jsonl`
-- 默认复刻 `codex resume` 的用户视角过滤：按 workspace/cwd 筛选，并隐藏内部 subagent 会话
-- 续聊调用官方 CLI：`codex exec resume --json <session-id> -`
-- 网页只连接本机 HTTP 服务，不把会话历史发到第三方服务
-- 没有 npm 运行时依赖，Node.js 18+ 即可
+It is designed for people who use Codex across many local projects and want a lightweight way to:
 
-## 使用
+- choose a local workspace
+- see the Codex sessions recorded for that workspace
+- inspect the conversation history
+- resume a session through an API
+- chat with the Codex agent from a browser
+- reference local Codex skills with `$skill-name`
+
+Codex Bridge is not an official OpenAI project. It wraps the local `codex` command and reads the local Codex session files on your machine.
+
+## Features
+
+- **Workspace-scoped session browser**  
+  Lists Codex sessions for a selected workspace, matching the default `codex resume` user experience as closely as possible.
+
+- **Conversation history API**  
+  Reads local `~/.codex/sessions/**/*.jsonl` files and returns clean user/assistant history.
+
+- **Resume and chat API**  
+  Sends messages through `codex exec resume --json <session-id> -`, so the actual agent execution remains handled by the official Codex CLI.
+
+- **Web UI**  
+  Provides a local browser interface for selecting a workspace, selecting a session, reading history, and chatting with Codex.
+
+- **Skill discovery**  
+  Scans local Codex skill directories, including user skills, system skills, and plugin-provided skills.
+
+- **Skill mention support**  
+  Type `$` in the message box to insert a skill mention, or click a skill in the sidebar. The backend extracts `$skill-name` mentions and passes them to Codex as selected skills.
+
+- **No runtime npm dependencies**  
+  Uses only Node.js built-in modules.
+
+## How It Works
+
+Codex Bridge uses two different data paths:
+
+1. **Session listing and history**
+   - Reads local Codex JSONL session files from `~/.codex/sessions`.
+   - Filters sessions by workspace/cwd.
+   - Hides internal subagent sessions by default.
+
+2. **Actual Codex execution**
+   - Calls the local Codex CLI.
+   - Uses `codex exec resume --json <session-id> -` for resumed conversations.
+   - Uses `codex exec --json -C <workspace> -` for new conversations.
+
+This means Codex Bridge does not reimplement the agent. It provides a local bridge around Codex CLI behavior.
+
+## Requirements
+
+- Node.js 18 or newer
+- Codex CLI installed and authenticated
+- A local `~/.codex/sessions` directory if you want to browse previous sessions
+
+The project has no runtime npm package dependencies.
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/xdl2003/codex-bridge.git
+cd codex-bridge
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Start the interactive CLI:
 
 ```bash
 npm start
 ```
 
-交互模式会先选择目标文件夹，然后列出该文件夹下的 Codex 历史会话。选中会话后可以直接在 CLI 里继续对话。
-
-常用命令：
-
-```bash
-node ./bin/codex-bridge.js sessions --workspace /path/to/project
-node ./bin/codex-bridge.js history <session-id> --workspace /path/to/project
-node ./bin/codex-bridge.js chat <session-id> "继续实现这个功能" --workspace /path/to/project --skill plot-from-data
-node ./bin/codex-bridge.js new "先看一下这个项目" --workspace /path/to/project --skill github:github
-node ./bin/codex-bridge.js tui <session-id> --workspace /path/to/project
-```
-
-## Web/API
+Start the web/API server:
 
 ```bash
 npm run server
 ```
 
-默认地址是 `http://127.0.0.1:3977`。
+The default local server address is:
 
-网页支持输入工作目录、扫描会话、点击会话、查看历史、发送消息给 Codex。打开会话时会自动定位到历史消息底部。`Browse` 是前端目录选择组件加已知 workspace 列表：浏览器可以打开目录选择器，但普通网页拿不到绝对本地路径，所以它会用目录名匹配已有 Codex workspace；匹配不到时需要直接输入绝对路径。
+```text
+http://127.0.0.1:3977
+```
 
-网页左侧会显示本机可用 skills，可搜索、点击插入。也可以直接在消息框输入 `$` 弹出 skill 候选，选择后会插入 `$skill-name`，例如 `$plot-from-data` 或 `$github:github`。发送消息时，页面会从消息文本里自动提取这些 `$skill-name` 并传给后端。
+## CLI Usage
+
+Interactive mode:
+
+```bash
+node ./bin/codex-bridge.js
+```
+
+List sessions for a workspace:
+
+```bash
+node ./bin/codex-bridge.js sessions --workspace /path/to/project
+```
+
+Show one session's history:
+
+```bash
+node ./bin/codex-bridge.js history <session-id> --workspace /path/to/project
+```
+
+Resume a session and send a message:
+
+```bash
+node ./bin/codex-bridge.js chat <session-id> "Continue this task" --workspace /path/to/project
+```
+
+Start a new Codex session:
+
+```bash
+node ./bin/codex-bridge.js new "Inspect this project first" --workspace /path/to/project
+```
+
+Use an explicit skill from the CLI:
+
+```bash
+node ./bin/codex-bridge.js chat <session-id> "Plot this data" \
+  --workspace /path/to/project \
+  --skill plot-from-data
+```
+
+Open the selected session in the native Codex TUI:
+
+```bash
+node ./bin/codex-bridge.js tui <session-id> --workspace /path/to/project
+```
+
+## Web UI
+
+Start the server:
+
+```bash
+npm run server
+```
+
+Open:
+
+```text
+http://127.0.0.1:3977
+```
+
+The web UI includes:
+
+- workspace path input
+- known workspace picker
+- session list
+- auto-scroll-to-bottom when a session is opened
+- Markdown rendering for message history
+- dedicated scroll area for the conversation panel
+- skill search and `$skill-name` insertion
+- chat composer that sends messages to the local Codex CLI
+
+### Browser Folder Selection Limitation
+
+Browsers do not reliably expose absolute local paths to web pages.
+
+For example:
+
+- `showDirectoryPicker()` exposes a directory handle and name, not a real absolute path.
+- `<input webkitdirectory>` exposes relative paths, not a real absolute path.
+
+Because Codex must run in a real local workspace path, Codex Bridge uses:
+
+- manual path input
+- known workspaces discovered from Codex sessions
+- directory-name matching as a convenience when a browser directory picker is available
+
+## Skill Support
+
+Codex Bridge scans these local locations:
+
+```text
+~/.codex/skills
+~/.codex/plugins/cache
+~/.codex/.tmp/plugins/plugins/*/skills
+~/.codex/.tmp/plugins/.agents/skills
+```
+
+The web UI shows the discovered skills in the sidebar.
+
+You can use skills in two ways:
+
+- type `$` in the message box and select a skill
+- click a skill in the sidebar to insert it
+
+Example:
+
+```text
+$plot-from-data draw a grouped bar chart from this CSV
+```
+
+When a message is sent, Codex Bridge extracts known `$skill-name` mentions and prepends a small instruction to the prompt so the resumed Codex process uses those skills.
 
 ## HTTP API
 
+Health check:
+
 ```http
-GET  /api/workspaces
-GET  /api/skills
-GET  /api/sessions?workspace=/path/to/project
-GET  /api/sessions/:id/history?workspace=/path/to/project
-POST /api/sessions/:id/chat
-POST /api/sessions/:id/chat/stream
-POST /api/sessions/new
-POST /api/folder-picker
+GET /api/health
 ```
 
-`POST /api/sessions/:id/chat` 请求体：
+List known workspaces:
+
+```http
+GET /api/workspaces
+```
+
+List local skills:
+
+```http
+GET /api/skills
+```
+
+List sessions for a workspace:
+
+```http
+GET /api/sessions?workspace=/path/to/project
+```
+
+Fetch session history:
+
+```http
+GET /api/sessions/:id/history?workspace=/path/to/project
+```
+
+Send a message to a resumed session:
+
+```http
+POST /api/sessions/:id/chat
+```
+
+Example request body:
 
 ```json
 {
   "workspace": "/path/to/project",
-  "skills": ["plot-from-data", "github:github"],
-  "message": "继续刚才的任务"
+  "skills": ["plot-from-data"],
+  "message": "$plot-from-data draw this dataset"
 }
 ```
 
-响应里会包含 Codex 的 JSONL 事件、提取出的最后一条 assistant 文本，以及刷新后的本地历史。
+Start a new session:
 
-## 设计边界
+```http
+POST /api/sessions/new
+```
 
-浏览器前端目录选择器不能可靠暴露绝对本地路径，`showDirectoryPicker()` 只给目录 handle/name，`<input webkitdirectory>` 只给相对路径。后端启动 Codex 需要真实绝对路径，所以网页会优先匹配已有 Codex workspace，匹配不到时使用手填路径。真正执行 Codex 的仍然是本机 `codex` 命令。
+Stream a resumed chat response:
 
-`codex resume` 本身已经有交互式 picker 和 cwd 过滤，但它不提供适合网页/API 使用的结构化 session list/history 输出。所以 Codex Bridge 读取 JSONL 来生成列表和历史，并在发送消息时回到官方 `codex exec resume <session-id>` 通道。
+```http
+POST /api/sessions/:id/chat/stream
+```
 
-`codex app-server`/`remote-control` 是官方实验能力，但这里没有直接绑定私有 app-server 协议。原因是当前 CLI 已经公开了 `codex exec resume --json`，对本地 API 和网页续聊来说更直接，也更容易跟 CLI 版本兼容。
+## Project Structure
 
-## 测试
+```text
+bin/
+  codex-bridge.js       CLI entry point
+public/
+  index.html            Web UI shell
+  app.js                Browser application logic
+  styles.css            Web UI styles
+src/
+  api-server.js         Local HTTP API and static file server
+  cli.js                CLI commands and interactive mode
+  codex-runner.js       Codex CLI process wrapper
+  folder-picker.js      Optional folder picker helpers
+  session-store.js      Codex JSONL session parsing
+  skill-store.js        Local skill discovery and prompt injection
+test/
+  session-store.test.js Unit tests
+fixtures/
+  fake-codex.js         Fake Codex binary for local development
+```
+
+## Privacy and Security
+
+Codex Bridge is intended to run locally.
+
+- The web server binds to `127.0.0.1` by default.
+- Session history is read from local Codex session files.
+- Chat execution is delegated to the local Codex CLI.
+- No telemetry or external service calls are implemented by Codex Bridge itself.
+
+Be careful when exposing the HTTP server beyond localhost. The API can read local Codex history and can start Codex runs in local workspaces.
+
+## Development
+
+Run tests:
 
 ```bash
 npm test
 ```
+
+Run syntax checks manually:
+
+```bash
+node --check public/app.js
+node --check src/api-server.js
+node --check src/cli.js
+node --check src/codex-runner.js
+node --check src/session-store.js
+node --check src/skill-store.js
+```
+
+## License
+
+MIT License. See [LICENSE](./LICENSE).
