@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Codex Bridge</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <header class="brand">
+          <div>
+            <h1>Codex Bridge</h1>
+            <p id="status">Idle</p>
+          </div>
+          <button id="refresh" class="icon-button" title="Refresh sessions" aria-label="Refresh sessions">↻</button>
+        </header>
+
+        <section class="workspace-panel">
+          <label for="workspace">Workspace</label>
+          <div class="path-row">
+            <input id="workspace" name="workspace" autocomplete="off" spellcheck="false">
+            <button id="pick-folder" title="Show known workspaces" aria-label="Show known workspaces">Browse</button>
+          </div>
+          <input id="folder-input" type="file" webkitdirectory directory multiple hidden>
+          <div id="workspace-picker" class="workspace-picker" hidden>
+            <div class="picker-head">
+              <span>Known Workspaces</span>
+              <button id="close-picker" class="icon-button" title="Close" aria-label="Close">x</button>
+            </div>
+            <ol id="workspaces" class="workspace-list"></ol>
+          </div>
+          <button id="scan">Show Sessions</button>
+        </section>
+
+        <section class="skills-panel">
+          <div class="section-head">
+            <h2>Skills</h2>
+            <span id="skills-count" class="panel-count">0 available</span>
+          </div>
+          <input id="skill-filter" autocomplete="off" spellcheck="false" placeholder="Filter skills">
+          <ol id="skills" class="skill-list"></ol>
+        </section>
+
+        <section class="sessions-panel">
+          <div class="section-head">
+            <h2>Sessions</h2>
+            <button id="new-session" title="Start new session" aria-label="Start new session">New</button>
+          </div>
+          <ol id="sessions" class="session-list"></ol>
+        </section>
+      </aside>
+
+      <main class="chat-pane">
+        <header class="chat-header">
+          <div>
+            <h2 id="session-title">No session selected</h2>
+            <p id="session-meta"></p>
+          </div>
+        </header>
+
+        <section id="messages" class="messages"></section>
+
+        <form id="composer" class="composer">
+          <div class="composer-input">
+            <textarea id="message" rows="3" placeholder="Message Codex"></textarea>
+            <ol id="skill-suggest" class="skill-suggest" hidden></ol>
+          </div>
+          <button id="send" type="submit">Send</button>
+        </form>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
